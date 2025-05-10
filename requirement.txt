@@ -1,0 +1,5 @@
+ffmpeg-python
+yt-dlp
+platformdirs
+tk
+pyinstaller

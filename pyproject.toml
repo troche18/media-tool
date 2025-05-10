@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media_tool"
+version = "0.1.0"
+description = "Media conversion and download tool"
+authors = [{ name="Your Name", email="your@email.com" }]
+dependencies = [
+    "ffmpeg-python",
+    "yt-dlp",
+    "platformdirs",
+    "tk",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tool.pixi.pypi-dependencies]
+media_tool = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+gui = "python -m media_tool.gui"
+settings = "python -m media_tool.settings_gui"
+generate-config = "python scripts/generate_config.py"
