@@ -176,3 +176,8 @@ cython_debug/
 # pixi environments
 .pixi
 *.egg-info
+
+extracted/
+local_tool*
+config.json
+pixi.lock
