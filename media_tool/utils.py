@@ -5,7 +5,6 @@ def check_ffmpeg_installed():
     try:
         startupinfo = None
         if os.name == 'nt':
-            import subprocess
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, startupinfo=startupinfo)
