@@ -1,35 +1,46 @@
 import os
 import yt_dlp
 from media_tool.downloaders.base import BaseDownloader
-
-SUPPORTED_FORMATS = {
-    "3gp":   "bestvideo[ext=3gp]+bestaudio[ext=3gp]/best",
-    "aac":   "bestaudio[ext=m4a]/best",
-    "flv":   "bestvideo[ext=flv]+bestaudio[ext=flv]/best",
-    "m4a":   "bestaudio[ext=m4a]/best",
-    "mp3":   "bestaudio[ext=mp3]/best",
-    "mp4":   "bestvideo+bestaudio/best",
-    "ogg":   "bestaudio[ext=ogg]/best",
-    "wav":   "bestaudio[ext=wav]/best",
-    "webm":  "bestvideo[ext=webm]+bestaudio[ext=webm]/best",
-}
-
-DOWNLOAD_FORMATS = list(SUPPORTED_FORMATS.keys())
+from media_tool.config import Config
+from media_tool.converter import Converter, SUPPORTED_FORMATS as CONVERT_FORMATS
 
 class YouTubeDownloader(BaseDownloader):
-    def download(self, url, format="mp4"):
-        if format not in SUPPORTED_FORMATS:
-            raise ValueError(f"Unsupported format: {format}. Supported formats are: {', '.join(SUPPORTED_FORMATS)}")
+    """
+    yt-dlp でデフォルト品質を取得し、必要に応じて ffmpeg で形式変換する。
+    """
+
+    def download(
+        self,
+        url: str,
+        output_format: str | None = None,
+        *,
+        format: str | None = None,          # 後方互換: format= も受け付ける
+    ) -> str:
+        if output_format is None and format is not None:
+            output_format = format
+
         ydl_opts = {
-            'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
-            'format': SUPPORTED_FORMATS[format],
+            "outtmpl": os.path.join(self.download_dir, "%(title)s.%(ext)s"),
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # ← 直接 YoutubeDL を使う
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-        
-        # ダウンロード後にタイムスタンプを変更
+
+        # 取得日をファイルのタイムスタンプに合わせる
         self._set_file_timestamp(file_path)
+
+        # 変換指定があれば Converter で処理
+        if output_format:
+            output_format = output_format.lower()
+            if output_format not in CONVERT_FORMATS:
+                raise ValueError(
+                    f"Unsupported convert format: {output_format}. "
+                    f"Supported formats: {', '.join(CONVERT_FORMATS)}"
+                )
+            converter = Converter(Config())
+            new_file_path =  converter.convert_to_format(file_path, output_format)
+            os.remove(file_path)
+            return new_file_path
 
         return file_path
 
