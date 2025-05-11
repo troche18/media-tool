@@ -1,10 +1,17 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from media_tool.utils import check_ffmpeg_installed, get_ffmpeg_supported_formats
-from media_tool.converter import Converter
-from media_tool.downloaders.youtube import YouTubeDownloader, DOWNLOAD_FORMATS
+from media_tool.utils import check_ffmpeg_installed
+from media_tool.converter import Converter, SUPPORTED_FORMATS as CONVERT_FORMATS
+from media_tool.downloaders.youtube import YouTubeDownloader
+from media_tool.downloaders.niconico import NicoNicoDownloader
 from media_tool.config import Config
 from media_tool.settings_gui import SettingsGUI
+
+option_menu_formats = {
+            "mp3", "wav", "ogg", "flac", "aac",
+            "mp4", "avi", "mkv", "mov", "wmv",
+            "webm", "m4a", "mpg", "mpeg", "flv"
+        }
 
 class MediaToolGUI:
     def __init__(self, root):
@@ -16,7 +23,6 @@ class MediaToolGUI:
             self.config.validate()
         except ValueError as e:
             print(f"設定値に問題があります: {e}")
-        self.convert_formats = get_ffmpeg_supported_formats()
         self.refresh_ui_from_config()
 
     def refresh_ui_from_config(self):
@@ -42,39 +48,45 @@ class MediaToolGUI:
         tk.Button(self.convert_frame, text="Select File", command=self.select_file).pack(side="left")
 
         self.convert_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)  # ← Config経由
-        self.convert_format_menu = tk.OptionMenu(self.convert_frame, self.convert_format_var, *self.convert_formats)
+        self.convert_format_menu = tk.OptionMenu(self.convert_frame, self.convert_format_var, *option_menu_formats)
         self.convert_format_menu.pack(side="left")
 
-        self.custom_ext_var = tk.StringVar()
-        self.custom_ext_entry = tk.Entry(self.convert_frame, textvariable=self.custom_ext_var, width=10)
-        self.custom_ext_entry.pack(side="left", padx=2)
+        self.convert_custom_ext_var = tk.StringVar()
+        self.convert_custom_ext_entry = tk.Entry(self.convert_frame, textvariable=self.convert_custom_ext_var, width=10)
+        self.convert_custom_ext_entry.pack(side="left", padx=2)
         tk.Label(self.convert_frame, text="拡張子").pack(side="left")
 
-        self.error_label = tk.Label(self.convert_frame, text="", fg="red")
-        self.error_label.pack(side="left", padx=5)
+        self.convert_error_label = tk.Label(self.convert_frame, text="")
+        self.convert_error_label.pack(side="left", padx=5)
 
         self.convert_btn = tk.Button(self.convert_frame, text="Convert", command=self.convert_file)
         self.convert_btn.pack(side="left")
 
         # ダウンロードセクション
-        self.download_frame = tk.LabelFrame(self.root, text="Download Video (YouTube)")
+        self.download_frame = tk.LabelFrame(self.root, text="Download Video")
         self.download_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         self.url_var = tk.StringVar()
         tk.Entry(self.download_frame, textvariable=self.url_var, width=50).pack(side="left", padx=5)
 
-        self.download_format_var = tk.StringVar(value="mp4")
-        self.download_format_menu = tk.OptionMenu(self.download_frame, self.download_format_var, *DOWNLOAD_FORMATS)
-        self.download_format_menu['menu'].delete(0, 'end')
-        for fmt in DOWNLOAD_FORMATS:
-            self.download_format_menu['menu'].add_command(label=fmt, command=tk._setit(self.download_format_var, fmt))
+        self.download_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)
+        self.download_format_menu = tk.OptionMenu(self.download_frame, self.download_format_var, *option_menu_formats)
         self.download_format_menu.pack(side="left")
+        
+        self.download_custom_ext_var = tk.StringVar()
+        self.download_custom_ext_entry = tk.Entry(self.download_frame, textvariable=self.download_custom_ext_var, width=10)
+        self.download_custom_ext_entry.pack(side="left", padx=2)
+        tk.Label(self.download_frame, text="拡張子").pack(side="left")
+
+        self.download_error_label = tk.Label(self.download_frame, text="")
+        self.download_error_label.pack(side="left", padx=5)
 
         self.download_btn = tk.Button(self.download_frame, text="Download", command=self.download_video)
         self.download_btn.pack(side="left")
 
         # イベントバインディング
-        self.custom_ext_var.trace_add("write", self.validate_extension)
+        self.convert_custom_ext_var.trace_add("write", self.convert_validate_extension)
+        self.download_custom_ext_var.trace_add("write", self.download_validate_extension)
 
     def select_file(self):
         path = filedialog.askopenfilename()
@@ -86,26 +98,48 @@ class MediaToolGUI:
         input_set = bool(self.file_path.get())
         self.convert_btn.config(state=tk.NORMAL if input_set else tk.DISABLED)
 
-    def validate_extension(self, *args):
-        custom_ext = self.custom_ext_var.get().strip().lower()
-        selected_format = self.convert_format_var.get()
+    def convert_validate_extension(self, *args):
+        custom_ext_var = self.convert_custom_ext_var
+        format_var = self.convert_format_var
+        error_label = self.convert_error_label
+        custom_ext = custom_ext_var.get().strip().lower()
+        selected_format = format_var.get()
 
         # カスタム拡張子があれば優先
         output_format = custom_ext or selected_format
         
         if not custom_ext:
-            self.error_label.config(text="")
+            error_label.config(text="")
             return
 
-        if output_format in self.convert_formats:
-            self.error_label.config(text="✔ OK")
+        if output_format in CONVERT_FORMATS:
+            error_label.config(text="✔ OK", fg="green")
         else:
-            self.error_label.config(text=f"⚠ 無効な形式: {output_format}")
+            error_label.config(text=f"⚠ 無効な形式: {output_format}", fg="red")
+    
+    def download_validate_extension(self, *args):
+        custom_ext_var = self.download_custom_ext_var
+        format_var = self.download_format_var
+        error_label = self.download_error_label
+        custom_ext = custom_ext_var.get().strip().lower()
+        selected_format = format_var.get()
+
+        # カスタム拡張子があれば優先
+        output_format = custom_ext or selected_format
+        
+        if not custom_ext:
+            error_label.config(text="")
+            return
+
+        if output_format in CONVERT_FORMATS:
+            error_label.config(text="✔ OK", fg="green")
+        else:
+            error_label.config(text=f"⚠ 無効な形式: {output_format}", fg="red")
 
     def convert_file(self):
         converter = Converter(self.config)
         input_path = self.file_path.get()
-        custom_ext = self.custom_ext_var.get().strip()
+        custom_ext = self.convert_custom_ext_var.get().strip()
         selected_format = self.convert_format_var.get()
         output_format = custom_ext or selected_format
         
@@ -118,12 +152,16 @@ class MediaToolGUI:
     def download_video(self):
         url = self.url_var.get()
         output_format = self.download_format_var.get()
-        print(output_format)
         if not url:
             messagebox.showerror("Error", "Please enter a URL.")
             return
         try:
-            result = YouTubeDownloader().download(url, format=output_format)
+            # URL を解析して適切なダウンローダーを選択
+            if "nicovideo.jp" in url or "nico.ms" in url:
+                downloader = NicoNicoDownloader()
+            else:
+                downloader = YouTubeDownloader()
+            result = downloader.download(url, output_format=output_format)
             messagebox.showinfo("Success", f"Saved at {result}")
         except Exception as e:
             messagebox.showerror("Error", str(e))

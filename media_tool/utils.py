@@ -42,23 +42,3 @@ def get_ffmpeg_supported_formats():
             "webm", "m4a", "mpg", "mpeg", "flv"
         }
     return supported
-
-class FFmpegSession:
-    def __init__(self):
-        self.startupinfo = None
-        if os.name == 'nt':
-            import subprocess
-            self.startupinfo = subprocess.STARTUPINFO()
-            self.startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
-    def run(self, args):
-        return subprocess.run(
-            ["ffmpeg"] + args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-            startupinfo=self.startupinfo
-        )
-
-FFMPEG_SESSION = FFmpegSession()
