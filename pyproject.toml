@@ -27,5 +27,6 @@ media_tool = { path = ".", editable = true }
 
 [tool.pixi.tasks]
 gui = "python -m media_tool.gui"
+cli = "python -m cli"
 settings = "python -m media_tool.settings_gui"
 generate-config = "python scripts/generate_config.py"

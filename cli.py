@@ -1,7 +1,7 @@
 import argparse
 import sys
 from media_tool.converter import Converter, SUPPORTED_FORMATS as CONVERT_FORMATS
-from media_tool.downloaders.youtube import YouTubeDownloader, SUPPORTED_FORMATS as DOWNLOAD_FORMATS
+from media_tool.downloaders.youtube import YouTubeDownloader, DOWNLOAD_FORMATS
 from media_tool.config import Config
 from media_tool.settings_gui import SettingsGUI
 

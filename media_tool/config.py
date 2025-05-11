@@ -49,3 +49,11 @@ class Config:
         except Exception as e:
             print(f"[エラー] 設定の保存に失敗しました: {e}")
             raise
+    
+    def get_config_dict(self):
+        return {
+                "OUTPUT_DIR": self.OUTPUT_DIR,
+                "DOWNLOAD_DIR": self.DOWNLOAD_DIR,
+                "DEFAULT_FORMAT": self.DEFAULT_FORMAT,
+                "LOG_LEVEL": self.LOG_LEVEL,
+            }
