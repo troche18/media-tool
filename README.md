@@ -48,7 +48,7 @@ curl -fsSL https://pixi.sh/install.sh | bash    # Linux/macOS
 # iwr -useb https://pixi.sh/install.ps1 | iex
 
 # 2) リポジトリを取得
-git clone https://github.com/yourname/media-tool.git
+git clone https://github.com/troche18/media-tool.git
 cd media-tool
 
 # 3) 起動
