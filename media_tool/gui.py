@@ -1,180 +1,211 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Media-Tool GUI
+
+機能:
+  • ファイルの一括変換
+  • URL/プレイリストの一括ダウンロード
+  • 拡張子個別指定 (ffmpeg 対応形式)
+  • 設定 GUI の呼び出しと即時反映
+"""
+from __future__ import annotations
+
+import sys
+import threading
+from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from media_tool.utils import check_ffmpeg_installed
-from media_tool.converter import Converter, SUPPORTED_FORMATS as CONVERT_FORMATS
+from tkinter import filedialog, messagebox, ttk
+
+from media_tool.config import Config
+from media_tool.converter import Converter, SUPPORTED_FORMATS
 from media_tool.downloaders.youtube import YouTubeDownloader
 from media_tool.downloaders.niconico import NicoNicoDownloader
-from media_tool.config import Config
 from media_tool.settings_gui import SettingsGUI
 
-option_menu_formats = {
-            "mp3", "wav", "ogg", "flac", "aac",
-            "mp4", "avi", "mkv", "mov", "wmv",
-            "webm", "m4a", "mpg", "mpeg", "flv"
-        }
+# ----------------------------------------------------------------------
+# ユーティリティ
+# ----------------------------------------------------------------------
+def format_paths_for_dialog(paths: list[str], limit: int = 5) -> str:
+    """ダイアログ用にパスを簡略表示する。"""
+    if not paths:
+        return "(なし)"
+    names = [Path(p).name for p in paths]
+    if len(names) <= limit:
+        return "\n".join(names)
+    shown = "\n".join(names[:limit])
+    return f"{shown}\n…他 {len(names) - limit} 件"
 
-class MediaToolGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Media Tool")
+
+# ----------------------------------------------------------------------
+# メイン GUI
+# ----------------------------------------------------------------------
+class MediaToolGUI(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Media Tool")
+        self.resizable(False, False)
+
+        # 設定読み込み
         self.config = Config()
-        self.config.load(self.config.CONFIG_PATH)  # config.json から読み込み
+        self.config.load(self.config.CONFIG_PATH)
         try:
             self.config.validate()
         except ValueError as e:
-            print(f"設定値に問題があります: {e}")
-        self.refresh_ui_from_config()
+            messagebox.showerror("設定エラー", str(e))
+            sys.exit(1)
 
-    def refresh_ui_from_config(self):
-        # 既存のウィジェット削除
-        for widget in self.root.winfo_children():
-            widget.destroy()
-        
-        # ffmpegチェック
-        check_ffmpeg_installed()
+        # ウィジェット構築
+        self._build_widgets()
 
-        # メニューバー
-        menubar = tk.Menu(self.root)
-        settings_menu = tk.Menu(menubar, tearoff=0)
-        settings_menu.add_command(label="設定を開く", command=self.open_settings)
-        menubar.add_cascade(label="設定", menu=settings_menu)
-        self.root.config(menu=menubar)
+    # ------------------------------------------------------------------
+    # ウィジェット
+    # ------------------------------------------------------------------
+    def _build_widgets(self) -> None:
+        pad = {"padx": 10, "pady": 4}
 
-        # 変換セクション
-        self.convert_frame = tk.LabelFrame(self.root, text="Convert File")
-        self.convert_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        self.file_path = tk.StringVar()
-        tk.Entry(self.convert_frame, textvariable=self.file_path, width=50).pack(side="left", padx=5)
-        tk.Button(self.convert_frame, text="Select File", command=self.select_file).pack(side="left")
+        # ==== 変換セクション ===========================================
+        convert_frame = ttk.LabelFrame(self, text="変換")
+        convert_frame.grid(row=0, column=0, sticky="ew", **pad)
 
-        self.convert_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)  # ← Config経由
-        self.convert_format_menu = tk.OptionMenu(self.convert_frame, self.convert_format_var, *option_menu_formats)
-        self.convert_format_menu.pack(side="left")
+        ttk.Label(convert_frame, text="出力形式").grid(row=0, column=0, **pad)
+        self.cv_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)
+        ttk.OptionMenu(
+            convert_frame,
+            self.cv_format_var,
+            self.cv_format_var.get(),
+            *SUPPORTED_FORMATS,
+        ).grid(row=0, column=1, **pad)
 
-        self.convert_custom_ext_var = tk.StringVar()
-        self.convert_custom_ext_entry = tk.Entry(self.convert_frame, textvariable=self.convert_custom_ext_var, width=10)
-        self.convert_custom_ext_entry.pack(side="left", padx=2)
-        tk.Label(self.convert_frame, text="拡張子").pack(side="left")
+        ttk.Button(
+            convert_frame,
+            text="ファイルを選択して変換",
+            command=self._on_convert_click,
+        ).grid(row=0, column=2, **pad)
 
-        self.convert_error_label = tk.Label(self.convert_frame, text="")
-        self.convert_error_label.pack(side="left", padx=5)
+        # ==== ダウンロードセクション ===================================
+        download_frame = ttk.LabelFrame(self, text="ダウンロード")
+        download_frame.grid(row=1, column=0, sticky="ew", **pad)
 
-        self.convert_btn = tk.Button(self.convert_frame, text="Convert", command=self.convert_file)
-        self.convert_btn.pack(side="left")
-
-        # ダウンロードセクション
-        self.download_frame = tk.LabelFrame(self.root, text="Download Video")
-        self.download_frame.pack(fill="both", expand=True, padx=10, pady=5)
-
+        ttk.Label(download_frame, text="URL").grid(row=0, column=0, **pad)
         self.url_var = tk.StringVar()
-        tk.Entry(self.download_frame, textvariable=self.url_var, width=50).pack(side="left", padx=5)
+        ttk.Entry(download_frame, textvariable=self.url_var, width=45).grid(
+            row=0, column=1, **pad
+        )
 
-        self.download_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)
-        self.download_format_menu = tk.OptionMenu(self.download_frame, self.download_format_var, *option_menu_formats)
-        self.download_format_menu.pack(side="left")
-        
-        self.download_custom_ext_var = tk.StringVar()
-        self.download_custom_ext_entry = tk.Entry(self.download_frame, textvariable=self.download_custom_ext_var, width=10)
-        self.download_custom_ext_entry.pack(side="left", padx=2)
-        tk.Label(self.download_frame, text="拡張子").pack(side="left")
+        ttk.Label(download_frame, text="出力形式").grid(row=1, column=0, **pad)
+        self.dl_format_var = tk.StringVar(value=self.config.DEFAULT_FORMAT)
+        ttk.OptionMenu(
+            download_frame,
+            self.dl_format_var,
+            self.dl_format_var.get(),
+            *SUPPORTED_FORMATS,
+        ).grid(row=1, column=1, **pad)
 
-        self.download_error_label = tk.Label(self.download_frame, text="")
-        self.download_error_label.pack(side="left", padx=5)
+        ttk.Button(
+            download_frame, text="ダウンロード", command=self._on_download_click
+        ).grid(row=1, column=2, **pad)
 
-        self.download_btn = tk.Button(self.download_frame, text="Download", command=self.download_video)
-        self.download_btn.pack(side="left")
+        # ==== 設定ボタン ===============================================
+        ttk.Button(
+            self,
+            text="設定を開く",
+            command=self._open_settings,
+            width=30,
+        ).grid(row=2, column=0, padx=10, pady=(6, 10), sticky="ew")
 
-        # イベントバインディング
-        self.convert_custom_ext_var.trace_add("write", self.convert_validate_extension)
-        self.download_custom_ext_var.trace_add("write", self.download_validate_extension)
-
-    def select_file(self):
-        path = filedialog.askopenfilename()
-        if path:
-            self.file_path.set(path)
-            self.update_button_states()
-
-    def update_button_states(self):
-        input_set = bool(self.file_path.get())
-        self.convert_btn.config(state=tk.NORMAL if input_set else tk.DISABLED)
-
-    def convert_validate_extension(self, *args):
-        custom_ext_var = self.convert_custom_ext_var
-        format_var = self.convert_format_var
-        error_label = self.convert_error_label
-        custom_ext = custom_ext_var.get().strip().lower()
-        selected_format = format_var.get()
-
-        # カスタム拡張子があれば優先
-        output_format = custom_ext or selected_format
-        
-        if not custom_ext:
-            error_label.config(text="")
+    # ------------------------------------------------------------------
+    # イベントハンドラ
+    # ------------------------------------------------------------------
+    # --- 変換 ---------------------------------------------------------
+    def _on_convert_click(self) -> None:
+        paths = filedialog.askopenfilenames(
+            title="変換するファイルを選択",
+            filetypes=[("メディアファイル", "*.*")],
+        )
+        if not paths:
             return
+        threading.Thread(
+            target=self._convert_worker,
+            args=(list(paths), self.cv_format_var.get()),
+            daemon=True,
+        ).start()
 
-        if output_format in CONVERT_FORMATS:
-            error_label.config(text="✔ OK", fg="green")
-        else:
-            error_label.config(text=f"⚠ 無効な形式: {output_format}", fg="red")
-    
-    def download_validate_extension(self, *args):
-        custom_ext_var = self.download_custom_ext_var
-        format_var = self.download_format_var
-        error_label = self.download_error_label
-        custom_ext = custom_ext_var.get().strip().lower()
-        selected_format = format_var.get()
-
-        # カスタム拡張子があれば優先
-        output_format = custom_ext or selected_format
-        
-        if not custom_ext:
-            error_label.config(text="")
-            return
-
-        if output_format in CONVERT_FORMATS:
-            error_label.config(text="✔ OK", fg="green")
-        else:
-            error_label.config(text=f"⚠ 無効な形式: {output_format}", fg="red")
-
-    def convert_file(self):
+    def _convert_worker(self, paths: list[str], fmt: str) -> None:
         converter = Converter(self.config)
-        input_path = self.file_path.get()
-        custom_ext = self.convert_custom_ext_var.get().strip()
-        selected_format = self.convert_format_var.get()
-        output_format = custom_ext or selected_format
-        
-        try:
-            output_path = converter.convert_to_format(input_path, output_format)
-            messagebox.showinfo("Success", f"Converted to {output_path}")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+        success, errors = [], []
+        for p in paths:
+            try:
+                success.append(converter.convert_to_format(p, fmt))
+            except Exception as e:
+                errors.append(f"{Path(p).name}: {e}")
+        self.after(0, lambda: self._show_result("変換", success, errors))
 
-    def download_video(self):
-        url = self.url_var.get()
-        output_format = self.download_format_var.get()
-        if not url:
-            messagebox.showerror("Error", "Please enter a URL.")
+    # --- ダウンロード -------------------------------------------------
+    def _on_download_click(self) -> None:
+        url_text = self.url_var.get().strip()
+        if not url_text:
+            messagebox.showwarning("入力エラー", "URL を入力してください。")
             return
+        urls = url_text.split()  # スペース区切り可
+        threading.Thread(
+            target=self._download_worker,
+            args=(urls, self.dl_format_var.get()),
+            daemon=True,
+        ).start()
+
+    def _download_worker(self, urls: list[str], fmt: str) -> None:
+        success, errors = [], []
+        for url in urls:
+            try:
+                dl = (
+                    YouTubeDownloader(config=self.config)
+                    if "youtube" in url.lower()
+                    else NicoNicoDownloader(config=self.config)
+                )
+                res = dl.download(url, output_format=fmt)
+                success.extend(res if isinstance(res, list) else [res])
+            except Exception as e:
+                errors.append(f"{url}: {e}")
+        self.after(0, lambda: self._show_result("ダウンロード", success, errors))
+
+    # --- 設定 ---------------------------------------------------------
+    def _open_settings(self) -> None:
+        win = tk.Toplevel(self)
+        win.title("設定")
+        SettingsGUI(win, on_update=self._reload_config)
+        win.grab_set()  # モーダル化
+
+    def _reload_config(self) -> None:
+        """設定ファイルを再読み込みし、GUI へ反映。"""
         try:
-            # URL を解析して適切なダウンローダーを選択
-            if "nicovideo.jp" in url or "nico.ms" in url:
-                downloader = NicoNicoDownloader()
-            else:
-                downloader = YouTubeDownloader()
-            result = downloader.download(url, output_format=output_format)
-            messagebox.showinfo("Success", f"Saved at {result}")
+            self.config.load(self.config.CONFIG_PATH)
+            self.cv_format_var.set(self.config.DEFAULT_FORMAT)
+            self.dl_format_var.set(self.config.DEFAULT_FORMAT)
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("設定再読込失敗", str(e))
 
-    def open_settings(self):
-        """settings_gui.py のSettingsGUIを別ウィンドウで開く"""
-        settings_root = tk.Toplevel(self.root)
-        def on_saved():
-            self.refresh_ui_from_config()
+    # ------------------------------------------------------------------
+    # 共通ダイアログ
+    # ------------------------------------------------------------------
+    def _show_result(self, title: str, success: list[str], errors: list[str]) -> None:
+        if success:
+            messagebox.showinfo(
+                f"{title}完了",
+                f"{len(success)} 件を処理しました:\n\n"
+                f"{format_paths_for_dialog(success)}\n\n"
+                "※完全なパスはコンソールログ参照",
+            )
+        if errors:
+            messagebox.showerror(
+                f"{title}失敗",
+                f"{len(errors)} 件でエラー:\n\n{format_paths_for_dialog(errors)}",
+            )
 
-        SettingsGUI(settings_root, on_save=on_saved)
 
+# ----------------------------------------------------------------------
+# エントリポイント
+# ----------------------------------------------------------------------
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = MediaToolGUI(root)
-    root.mainloop()
+    app = MediaToolGUI()
+    app.mainloop()
