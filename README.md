@@ -14,7 +14,6 @@
   - [GUI](#gui)
   - [CLI](#cli)
 - [設定ファイル](#設定ファイル)
-- [開発](#開発)
 - [License](#license)
 
 ---
@@ -52,13 +51,11 @@ curl -fsSL https://pixi.sh/install.sh | bash    # Linux/macOS
 git clone https://github.com/yourname/media-tool.git
 cd media-tool
 
-# 3) 依存解決と初回起動
-pixi install                # 仮想環境とパッケージを用意
-pixi run python run.py      # GUI 起動（--cli で CLI モード）
+# 3) 起動
+python run.py
 ~~~
 
 > **備考**  
-> - `pixi install` だけで仮想環境作成・依存解決まで完了します。  
 > - pip / venv 手順は不要です。すべて Pixi が面倒を見ます。  
 > - FFmpeg は同梱せず、システム PATH 上の実行ファイルを利用します（必要に応じて追加してください）。
 
@@ -96,17 +93,6 @@ GUI で変更するか、直接 JSON を編集してください。
 | `DOWNLOAD_DIR` | 元動画の保存先 |
 | `DEFAULT_FORMAT` | GUI／CLI 既定フォーマット |
 | `LOG_LEVEL` | `INFO` / `DEBUG` |
-
-## 開発
-~~~bash
-# テスト実行
-pixi run pytest
-
-# スタンドアロン実行ファイル作成 (Windows例)
-pixi run pyinstaller run.py -n media-tool-gui --onefile -w
-~~~
-- **依存管理**: `pyproject.toml` + Pixi  
-- **開発依存**: `pytest`, `pyinstaller` 等は `dev-requirements.txt` へ分離
 
 ## License
 [MIT](LICENSE)
