@@ -29,7 +29,6 @@ exclude  = ["extracted*", "tests*"] # 誤検出し得るディレクトリを除
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["win-64"]
 
 [tool.pixi.pypi-dependencies]
 media_tool = { path = ".", editable = true }
