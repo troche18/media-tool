@@ -1,32 +1,93 @@
 import os
 import yt_dlp
+from typing import Final
+
 from media_tool.downloaders.base import BaseDownloader
-from media_tool.converter import Converter, SUPPORTED_FORMATS as CONVERT_FORMATS
+from media_tool.converter import Converter, AUDIO_ONLY_FORMATS, VIDEO_FORMATS
+
+# ───────────────────────────────────────────────
+# サポートフォーマット一覧
+# ───────────────────────────────────────────────
+DOWNLOAD_FORMATS: Final[list[str]] = sorted(AUDIO_ONLY_FORMATS | VIDEO_FORMATS)
 
 
 class NicoNicoDownloader(BaseDownloader):
-    """ニコニコ動画専用ダウンローダー。ダウンロード後に必要なら形式変換を行う"""
+    """ニコニコ動画専用ダウンローダー（要フォーマット変換対応版）
 
-    def download(self, url: str, output_format: str | None = None) -> str:
-        ydl_opts = {
-            "outtmpl": os.path.join(self.download_dir, "%(title)s.%(ext)s"),
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
+    - VIDEO_FORMATS: 可能な限り直接取得し、異なる場合は Converter で変換
+    - AUDIO_ONLY_FORMATS: bestaudio を抽出し FFmpegExtractAudio で変換
+    """
 
-        # 変換不要
-        if not output_format:
-            return file_path
+    def download(self, url: str, *, output_format: str | None = None) -> str:
+        """
+        Parameters
+        ----------
+        url : str
+            ニコニコ動画の URL
+        output_format : str | None
+            保存フォーマット（例: "mp4", "webm", "mp3"）。
+            None の場合は "mp4" を使用。
 
-        output_format = output_format.lower()
-        if output_format not in CONVERT_FORMATS:
+        Returns
+        -------
+        str
+            保存されたファイルパス（要求フォーマットで必ず返す）
+        """
+        # 要求フォーマットを大文字小文字区別なく取得
+        fmt = (output_format or "mp4").lower()
+        if fmt not in DOWNLOAD_FORMATS:
             raise ValueError(
-                f"Unsupported convert format: {output_format}. Supported: {', '.join(CONVERT_FORMATS)}"
+                f"Unsupported format: {fmt}. Supported: {', '.join(DOWNLOAD_FORMATS)}"
             )
 
-        # 同じ設定を共有して変換
-        converter = Converter(self.config)
-        new_file_path = converter.convert_to_format(file_path, output_format)
-        os.remove(file_path)
-        return new_file_path
+        # 安全なテンプレート：拡張子は yt_dlp が自動決定
+        safe_outtmpl = os.path.join(self.download_dir, "%(title)s.%(ext)s")
+        ydl_opts: dict[str, object] = {"outtmpl": safe_outtmpl}
+
+        # フォーマットに応じたオプション設定
+        if fmt in VIDEO_FORMATS:
+            if fmt == "mp4":
+                # MP4 のみ高速マージ（H.264 + AAC）
+                ydl_opts.update({
+                    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "merge_output_format": "mp4",
+                })
+            else:
+                # その他（webm, mkv, flv, 3gp）は安全に mkv などで結合
+                ydl_opts.update({
+                    "format": "bestvideo+bestaudio/best",
+                    # merge_output_format 指定なしで汎用コンテナにマージ
+                })
+        else:
+            # 音声のみフォーマット
+            ydl_opts.update({
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": fmt,
+                        "preferredquality": "0",
+                    }
+                ],
+            })
+
+        # ダウンロード実行
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get("title", "video")
+            # VIDEO時は yt_dlp が返す ext を、AUDIO時は要求 fmt を使用
+            ext = info.get("ext", fmt) if fmt in VIDEO_FORMATS else fmt
+            downloaded_path = os.path.join(self.download_dir, f"{title}.{ext}")
+
+        # 要求フォーマットと異なれば Converter で変換
+        if ext.lower() != fmt:
+            converter = Converter(self.config)
+            converted_path = converter.convert_to_format(downloaded_path, fmt)
+            try:
+                os.remove(downloaded_path)
+            except FileNotFoundError:
+                pass
+            downloaded_path = converted_path
+
+        print(f"[INFO] Downloaded: {downloaded_path}")
+        return downloaded_path
