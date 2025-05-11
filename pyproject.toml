@@ -18,12 +18,25 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "."} 
+
+[tool.setuptools.packages.find]     # 自動発見の条件を明示
+where    = ["."]
+include  = ["media_tool*"]          # ここだけパッケージ化
+exclude  = ["extracted*", "tests*"] # 誤検出し得るディレクトリを除外
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["win-64"]
 
 [tool.pixi.pypi-dependencies]
 media_tool = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+python = ">=3.11,<3.12"
+ffmpeg = "*"   
 
 [tool.pixi.tasks]
 gui = "python -m media_tool.gui"
