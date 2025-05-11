@@ -85,11 +85,9 @@ def main():
         sys.argv = ["media-tool"] + args
         cli_main()
     else:
-        import tkinter as tk
         from media_tool.gui import MediaToolGUI
-        root = tk.Tk()
-        app = MediaToolGUI(root)
-        root.mainloop()
+        app = MediaToolGUI()
+        app.mainloop()
 
 
 if __name__ == "__main__":
