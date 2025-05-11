@@ -19,13 +19,18 @@ class Converter:
     def convert_to_format(self, input_path: str, output_format: str) -> str:
         output_format = output_format.lower()
         if output_format not in SUPPORTED_FORMATS:
-            raise ValueError(...)
+            raise ValueError("convertエラー", f"ffmpegでサポートされていないフォーマットです。{output_format}")
+        if not os.path.exists(input_path):
+            raise ValueError("convertエラー", f"ファイルが存在しません{input_path}")
+        input_path_ext = input_path.split(".")[-1]
+        if "." not in input_path or input_path_ext not in SUPPORTED_FORMATS:
+            raise ValueError("convertエラー", f"ffmpegでサポートされていないフォーマットです。{input_path_ext}")
         base_name = os.path.splitext(os.path.basename(input_path))[0]
         output_path = os.path.join(self.config.OUTPUT_DIR, f"{base_name}.{output_format}")
 
         cmd = ["-i", input_path, output_path]
         try:
-            FFMPEG_SESSION.run(cmd)  # ← 使いまわし
+            FFMPEG_SESSION.run(cmd)
             return output_path
         except Exception as e:
             raise
